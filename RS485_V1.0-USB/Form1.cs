@@ -12,7 +12,6 @@ namespace RS485_V1._0_USB
             mySerialPort.DataReceived += DataReceivedHandler;
         }
 
- 
         private void Form1_Load(object sender, EventArgs e)
         {
             button1.Enabled = true; //bật nút 1 kết nối 
@@ -29,6 +28,7 @@ namespace RS485_V1._0_USB
             string[] ports = SerialPort.GetPortNames(); //hàm đọc cổng COM có trên máy tính 19-21
             foreach (string port in ports)
                 comboBox1.Items.Add(port);
+
             comboBox2.Items.AddRange(new object[] { "9600", "19200", "38400", "57600", "115200" }); //thêm tốc độ baud vào comboBox2
             comboBox2.SelectedItem = "9600";   //mặc định chọn 9600
             comboBox3.Items.AddRange(new object[] { "4CH", "6CH" });
