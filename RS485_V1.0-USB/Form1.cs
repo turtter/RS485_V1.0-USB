@@ -1,15 +1,18 @@
 ﻿using System;
 using System.Windows.Forms;
 using System.IO.Ports;
+
 namespace RS485_V1._0_USB
 {
     public partial class Form1 : Form
     {
         private SerialPort mySerialPort = new SerialPort();
+        private System.Windows.Forms.Timer readTimer = new System.Windows.Forms.Timer();
         public Form1()
         {
             InitializeComponent();
             mySerialPort.DataReceived += DataReceivedHandler;
+            readTimer.Tick += ReadTimer_Tick;
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -34,8 +37,47 @@ namespace RS485_V1._0_USB
             comboBox3.Items.AddRange(new object[] { "4CH", "6CH" });
             comboBox3.SelectedIndex = -1;
 
-        }
 
+        }
+        private ushort CRC16(byte[] data) //    hàm tính CRC16 cho dữ liệu truyền đi
+        {
+            ushort crc = 0xFFFF;
+            foreach (byte b in data)
+            {
+                crc ^= b;
+                for (int i = 0; i < 8; i++)
+                {
+                    if ((crc & 0x0001) != 0)
+                        crc = (ushort)((crc >> 1) ^ 0xA001);
+                    else
+                        crc >>= 1;
+                }
+            }
+            return crc;
+        }
+        private byte[] TaoFrameRead(byte channel) //tao frame READ, frame có cấu trúc: [0x3A, 0x03, 0x01, channel, CRC_L, CRC_H]
+        {
+            byte[] frame = new byte[] { 0x3A, 0x03, 0x01, channel };
+            ushort crc = CRC16(frame);
+            return new byte[] { 0x3A, 0x03, 0x01, channel, (byte)(crc & 0xFF), (byte)(crc >> 8) };
+        }
+        private byte[] TaoFrameWrite(byte channel, int value)
+        {
+            byte vMSB = (byte)(value >> 8);
+            byte vLSB = (byte)(value & 0xFF);
+            byte[] frame = new byte[] { 0x3A, 0x10, 0x06, channel, vMSB, vLSB };
+            ushort crc = CRC16(frame);
+            return new byte[] { 0x3A, 0x10, 0x06, channel, vMSB, vLSB, (byte)(crc & 0xFF), (byte)(crc >> 8) };
+        }
+        private void ReadTimer_Tick(object sender, EventArgs e)
+        {
+            if (!mySerialPort.IsOpen) return;
+
+            if (comboBox3.SelectedItem?.ToString() == "4CH")
+                mySerialPort.Write(TaoFrameRead(0x05), 0, 6);
+            else if (comboBox3.SelectedItem?.ToString() == "6CH")
+                mySerialPort.Write(TaoFrameRead(0x07), 0, 6);
+        }
         private void button1_Click(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen)
@@ -46,7 +88,7 @@ namespace RS485_V1._0_USB
                 mySerialPort.DataBits = 8;
                 mySerialPort.StopBits = StopBits.One;
                 mySerialPort.Open();
-
+                comboBox3.Enabled = true;
                 button1.Text = "DISCONNECT";
                 groupBox9.Enabled = true;
             }
@@ -55,23 +97,23 @@ namespace RS485_V1._0_USB
                 mySerialPort.Close();
                 button1.Text = "CONNECT";
                 groupBox9.Enabled = false;
+                comboBox3.Enabled = false;
             }
         }
+
         private void DataReceivedHandler(object sender, SerialDataReceivedEventArgs e)
         {
-            System.Threading.Thread.Sleep(1000);
+            System.Threading.Thread.Sleep(5000);
 
-            if (!mySerialPort.IsOpen) return; 
+            if (!mySerialPort.IsOpen) return;
 
-            int bytes = mySerialPort.BytesToRead;
-            byte[] buffer = new byte[bytes];
-            mySerialPort.Read(buffer, 0, bytes);
+            string data = mySerialPort.ReadExisting();
 
-            string hex = BitConverter.ToString(buffer).Replace("-", " ");
+            if (this.IsDisposed) return;
 
             this.Invoke(new Action(() =>
             {
-                textBox3.AppendText(hex + Environment.NewLine);
+                textBox3.AppendText(data);
             }));
         }
         private void label1_Click(object sender, EventArgs e)
@@ -151,7 +193,7 @@ namespace RS485_V1._0_USB
 
         private void comboBox3_SelectedIndexChanged_1(object sender, EventArgs e)
         {
-            if (comboBox3.SelectedItem.ToString() ==  "4CH")
+            if (comboBox3.SelectedItem.ToString() == "4CH")
             {
                 groupBox3.Enabled = true;
                 groupBox4.Enabled = true;
@@ -159,7 +201,7 @@ namespace RS485_V1._0_USB
                 groupBox6.Enabled = true;
                 groupBox7.Enabled = false;
                 groupBox8.Enabled = false;
-           
+
             }
             else
             {
@@ -169,8 +211,47 @@ namespace RS485_V1._0_USB
                 groupBox6.Enabled = true;
                 groupBox7.Enabled = true;
                 groupBox8.Enabled = true;
-                
+
             }
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            if (!mySerialPort.IsOpen) return;
+
+            if (comboBox3.SelectedItem?.ToString() == "4CH")
+                mySerialPort.Write(TaoFrameRead(0x05), 0, 6);
+            else if (comboBox3.SelectedItem?.ToString() == "6CH")
+                mySerialPort.Write(TaoFrameRead(0x07), 0, 6);
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            if (!mySerialPort.IsOpen) return;
+
+            int value = (int)numericUpDown9.Value;
+            int channels = comboBox3.SelectedItem?.ToString() == "6CH" ? 6 : 4;
+
+            for (byte ch = 1; ch <= channels; ch++)
+            {
+                byte[] frame = TaoFrameWrite(ch, value);
+                string log = BitConverter.ToString(frame).Replace("-", " ");
+                textBox3.AppendText("Gửi CH" + ch + ": " + log + Environment.NewLine);
+                mySerialPort.Write(frame, 0, frame.Length);
+                System.Threading.Thread.Sleep(50);
+            }
+        }
+        // ========== ĐÓNG APP ==========
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            readTimer.Stop();
+            if (mySerialPort != null && mySerialPort.IsOpen)
+                mySerialPort.Close();
+        }
+
+        private void numericUpDown9_ValueChanged(object sender, EventArgs e)
+        {
+
         }
     }
 }
