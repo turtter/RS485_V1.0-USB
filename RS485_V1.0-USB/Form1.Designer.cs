@@ -261,6 +261,7 @@
             this.groupBox9.TabIndex = 8;
             this.groupBox9.TabStop = false;
             this.groupBox9.Text = "Mutil";
+            this.groupBox9.Enter += new System.EventHandler(this.groupBox9_Enter);
             // 
             // button3
             // 

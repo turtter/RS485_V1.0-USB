@@ -41,18 +41,26 @@ namespace RS485_V1._0_USB
         }
         private ushort CRC16(byte[] data) //    hàm tính CRC16 cho dữ liệu truyền đi
         {
-            ushort crc = 0xFFFF;
-            foreach (byte b in data)
+            ushort crc = 0xFFFF; // Giá trị khởi tạo
+
+            for (int pos = 0; pos < data.Length; pos++)
             {
-                crc ^= b;
-                for (int i = 0; i < 8; i++)
+                crc ^= (ushort)data[pos]; // XOR byte dữ liệu với CRC
+
+                for (int i = 8; i != 0; i--) // Lặp 8 lần cho 8 bit của 1 byte
                 {
-                    if ((crc & 0x0001) != 0)
-                        crc = (ushort)((crc >> 1) ^ 0xA001);
-                    else
-                        crc >>= 1;
+                    if ((crc & 0x0001) != 0) // Nếu bit LSB là 1
+                    {
+                        crc >>= 1;           // Dịch phải 1 bit
+                        crc ^= 0xA001;       // XOR với đa thức 0xA001
+                    }
+                    else                     // Nếu bit LSB là 0
+                    {
+                        crc >>= 1;           // Chỉ dịch phải 1 bit
+                    }
                 }
             }
+
             return crc;
         }
         private byte[] TaoFrameRead(byte channel) //tao frame READ, frame có cấu trúc: [0x3A, 0x03, 0x01, channel, CRC_L, CRC_H]
@@ -61,22 +69,65 @@ namespace RS485_V1._0_USB
             ushort crc = CRC16(frame);
             return new byte[] { 0x3A, 0x03, 0x01, channel, (byte)(crc & 0xFF), (byte)(crc >> 8) };
         }
-        private byte[] TaoFrameWrite(byte channel, int value)
+
+        // Thử frame không có byte độ dài
+        // Frame: 3A 06 [channel] [vMSB] [vLSB] CRC_L CRC_H
+        // Frame ghi: 3A 06 02 [channel] [LSB] CRC_L CRC_H  (bỏ MSB 0x00)
+        private byte[] TaoFrameWriteSingleChannel(byte channel, int value)
         {
-            byte vMSB = (byte)(value >> 8);
             byte vLSB = (byte)(value & 0xFF);
-            byte[] frame = new byte[] { 0x3A, 0x10, 0x06, channel, vMSB, vLSB };
+            byte[] frame = new byte[] { 0x3A, 0x06, 0x02, channel, vLSB };
             ushort crc = CRC16(frame);
-            return new byte[] { 0x3A, 0x10, 0x06, channel, vMSB, vLSB, (byte)(crc & 0xFF), (byte)(crc >> 8) };
+            return new byte[] { 0x3A, 0x06, 0x02, channel, vLSB,
+                        (byte)(crc & 0xFF), (byte)(crc >> 8) };
         }
+
+        private byte[] TaoFrameWriteAllChannels(int[] values)
+        {
+            int numCH = values.Length; // 4 hoặc 6
+
+            // byte thứ 3 = số kênh (0x04 hoặc 0x06)
+            // data = [MSB] [LSB] cho từng kênh, KHÔNG có byte channel
+            int dataSize = numCH * 2; // 4CH=8 bytes, 6CH=12 bytes
+
+            byte[] frame = new byte[3 + dataSize + 2];
+            frame[0] = 0x3A;
+            frame[1] = 0x06;
+            frame[2] = (byte)dataSize; // ✅ 4CH=0x04, 6CH=0x06
+
+            for (int i = 0; i < numCH; i++)
+            {
+                frame[3 + i * 2] = (byte)(values[i] >> 8);   // MSB
+                frame[3 + i * 2 + 1] = (byte)(values[i] & 0xFF); // LSB
+            }
+
+            byte[] frameForCRC = new byte[3 + dataSize];
+            Array.Copy(frame, frameForCRC, 3 + dataSize);
+            ushort crc = CRC16(frameForCRC);
+
+            frame[3 + dataSize] = (byte)(crc & 0xFF);
+            frame[3 + dataSize + 1] = (byte)(crc >> 8);
+
+            return frame;
+        }
+
         private void ReadTimer_Tick(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen) return;
+            if (comboBox3.SelectedItem == null) return;
 
-            if (comboBox3.SelectedItem?.ToString() == "4CH")
-                mySerialPort.Write(TaoFrameRead(0x05), 0, 6);
-            else if (comboBox3.SelectedItem?.ToString() == "6CH")
+            if (comboBox3.SelectedItem.ToString() == "4CH")
+            {
+                for (byte ch = 1; ch <= 4; ch++)
+                {
+                    mySerialPort.Write(TaoFrameRead(ch), 0, 6);
+                    System.Threading.Thread.Sleep(100);
+                }
+            }
+            else // 6CH
+            {
                 mySerialPort.Write(TaoFrameRead(0x07), 0, 6);
+            }
         }
         private void button1_Click(object sender, EventArgs e)
         {
@@ -88,9 +139,11 @@ namespace RS485_V1._0_USB
                 mySerialPort.DataBits = 8;
                 mySerialPort.StopBits = StopBits.One;
                 mySerialPort.Open();
+
                 comboBox3.Enabled = true;
                 button1.Text = "DISCONNECT";
                 groupBox9.Enabled = true;
+                textBox3.AppendText($"✅ Đã kết nối {mySerialPort.PortName} - {mySerialPort.BaudRate} baud{Environment.NewLine}");
             }
             else
             {
@@ -98,24 +151,121 @@ namespace RS485_V1._0_USB
                 button1.Text = "CONNECT";
                 groupBox9.Enabled = false;
                 comboBox3.Enabled = false;
+                groupBox2.Enabled = false;
+                groupBox3.Enabled = false;
+                groupBox4.Enabled = false;
+                groupBox5.Enabled = false;
+                groupBox6.Enabled = false;
+                groupBox7.Enabled = false;
+                groupBox8.Enabled = false;
+
+                textBox3.AppendText($"X Đã ngắt kết nối{Environment.NewLine}");
             }
         }
 
         private void DataReceivedHandler(object sender, SerialDataReceivedEventArgs e)
         {
-            System.Threading.Thread.Sleep(5000);
+            System.Threading.Thread.Sleep(100);
 
             if (!mySerialPort.IsOpen) return;
 
-            string data = mySerialPort.ReadExisting();
+            int bytesAvailable = mySerialPort.BytesToRead;
+            if (bytesAvailable == 0) return;
+
+            byte[] buffer = new byte[bytesAvailable];
+            mySerialPort.Read(buffer, 0, bytesAvailable);
+
+            string hex = BitConverter.ToString(buffer).Replace("-", " ");
 
             if (this.IsDisposed) return;
 
             this.Invoke(new Action(() =>
             {
-                textBox3.AppendText(data);
+                textBox3.AppendText($"Nhận: {hex}{Environment.NewLine}");
+                // Tách từng frame và xử lý riêng
+                ParseMultipleFrames(buffer);
             }));
         }
+
+        private void ParseMultipleFrames(byte[] data)
+        {
+            int i = 0;
+            while (i < data.Length)
+            {
+                // Tìm header 0x3A
+                if (data[i] != 0x3A)
+                {
+                    i++;
+                    continue;
+                }
+
+                // Cần ít nhất 4 bytes: 3A, funcCode, dataLen, ...
+                if (i + 3 >= data.Length) break;
+
+                byte funcCode = data[i + 1];
+                byte dataLen = data[i + 2];
+
+                // Tổng frame = header(3) + dataLen + CRC(2)
+                int frameLen = 3 + dataLen + 2;
+
+                if (i + frameLen > data.Length) break;
+
+                // Cắt đúng 1 frame
+                byte[] frame = new byte[frameLen];
+                Array.Copy(data, i, frame, 0, frameLen);
+
+                ParseResponse(frame);
+
+                i += frameLen;
+            }
+        }
+
+        private void ParseResponse(byte[] data)
+        {
+            if (data.Length < 6) return;
+            if (data[0] != 0x3A) return;
+
+            // Kiểm tra CRC
+            byte[] dataWithoutCRC = new byte[data.Length - 2];
+            Array.Copy(data, dataWithoutCRC, data.Length - 2);
+            ushort calcCRC = CRC16(dataWithoutCRC);
+            ushort recvCRC = (ushort)(data[data.Length - 2] | (data[data.Length - 1] << 8));
+
+            if (calcCRC != recvCRC)
+            {
+                textBox3.AppendText($"⚠️ CRC lỗi! Tính: {calcCRC:X4} - Nhận: {recvCRC:X4}{Environment.NewLine}");
+                return;
+            }
+
+            byte funcCode = data[1];
+
+            switch (funcCode)
+            {
+                case 0x03: // Response đọc value
+                    byte channel = data[2];
+                    int value = (data[3] << 8) | data[4];
+                   // textBox3.AppendText($"✅ Đọc CH{channel} = {value}{Environment.NewLine}");
+                    break;
+
+                case 0x06: // Response ghi từng kênh
+                    textBox3.AppendText($"✅ Ghi kênh thành công{Environment.NewLine}");
+                    break;
+
+                case 0x07: // Response ghi tất cả kênh
+                    textBox3.AppendText($"✅ Ghi tất cả kênh thành công{Environment.NewLine}");
+                    break;
+
+                case 0xA1: // Error
+                    textBox3.AppendText($"❌ Thiết bị báo lỗi: 0x{data[2]:X2}{Environment.NewLine}");
+                    break;
+
+                default:
+                    textBox3.AppendText($"ℹ️ FuncCode 0x{funcCode:X2} - Data: {BitConverter.ToString(data).Replace("-", " ")}{Environment.NewLine}");
+                    break;
+            }
+        }
+        
+
         private void label1_Click(object sender, EventArgs e)
         {
 
@@ -218,28 +368,51 @@ namespace RS485_V1._0_USB
         private void button2_Click(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen) return;
+            if (comboBox3.SelectedItem == null) return;
 
-            if (comboBox3.SelectedItem?.ToString() == "4CH")
-                mySerialPort.Write(TaoFrameRead(0x05), 0, 6);
-            else if (comboBox3.SelectedItem?.ToString() == "6CH")
-                mySerialPort.Write(TaoFrameRead(0x07), 0, 6);
+            if (comboBox3.SelectedItem.ToString() == "4CH")
+            {
+                // Đọc từng kênh 1→4
+                for (byte ch = 1; ch <= 4; ch++)
+                {
+                    byte[] frame = TaoFrameRead(ch);
+                    string log = BitConverter.ToString(frame).Replace("-", " ");
+                    textBox3.AppendText($"Gửi đọc CH{ch}: {log}{Environment.NewLine}");
+                    mySerialPort.Write(frame, 0, frame.Length);
+                    System.Threading.Thread.Sleep(100);
+                }
+            }
+            else // 6CH - Read All
+            {
+                byte[] frame = TaoFrameRead(0x07);
+                string log = BitConverter.ToString(frame).Replace("-", " ");
+                textBox3.AppendText($"Gửi đọc tất cả 6CH: {log}{Environment.NewLine}");
+                mySerialPort.Write(frame, 0, frame.Length);
+            }
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen) return;
+            if (comboBox3.SelectedItem == null)
+            {
+                MessageBox.Show("Vui lòng chọn 4CH hoặc 6CH!", "Thông báo",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             int value = (int)numericUpDown9.Value;
-            int channels = comboBox3.SelectedItem?.ToString() == "6CH" ? 6 : 4;
+            byte vLSB = (byte)(value & 0xFF);
 
-            for (byte ch = 1; ch <= channels; ch++)
-            {
-                byte[] frame = TaoFrameWrite(ch, value);
-                string log = BitConverter.ToString(frame).Replace("-", " ");
-                textBox3.AppendText("Gửi CH" + ch + ": " + log + Environment.NewLine);
-                mySerialPort.Write(frame, 0, frame.Length);
-                System.Threading.Thread.Sleep(50);
-            }
+            // 3A 06 02 07 [vLSB] CRC_L CRC_H
+            byte[] frame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB };
+            ushort crc = CRC16(frame);
+            byte[] fullFrame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB,
+                                    (byte)(crc & 0xFF), (byte)(crc >> 8) };
+
+            string log = BitConverter.ToString(fullFrame).Replace("-", " ");
+            textBox3.AppendText($"Gửi ghi tất cả kênh (value={value}): {log}{Environment.NewLine}");
+            mySerialPort.Write(fullFrame, 0, fullFrame.Length);
         }
         // ========== ĐÓNG APP ==========
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -250,6 +423,11 @@ namespace RS485_V1._0_USB
         }
 
         private void numericUpDown9_ValueChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void groupBox9_Enter(object sender, EventArgs e)
         {
 
         }
