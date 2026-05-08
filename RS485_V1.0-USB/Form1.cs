@@ -404,15 +404,42 @@ namespace RS485_V1._0_USB
             int value = (int)numericUpDown9.Value;
             byte vLSB = (byte)(value & 0xFF);
 
-            // 3A 06 02 07 [vLSB] CRC_L CRC_H
-            byte[] frame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB };
-            ushort crc = CRC16(frame);
-            byte[] fullFrame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB,
-                                    (byte)(crc & 0xFF), (byte)(crc >> 8) };
+            if (comboBox3.SelectedItem.ToString() == "4CH")
+            {
+                // ==== XỬ LÝ 4CH: GHI TỪNG KÊNH MỘT ====
+                for (byte ch = 1; ch <= 4; ch++)
+                {
+                    // Khung truyền ghi 1 kênh: 3A 06 02 [ch] [vLSB]
+                    byte[] frame = new byte[] { 0x3A, 0x06, 0x02, ch, vLSB };
+                    ushort crc = CRC16(frame);
 
-            string log = BitConverter.ToString(fullFrame).Replace("-", " ");
-            textBox3.AppendText($"Gửi ghi tất cả kênh (value={value}): {log}{Environment.NewLine}");
-            mySerialPort.Write(fullFrame, 0, fullFrame.Length);
+                    byte[] fullFrame = new byte[] { 0x3A, 0x06, 0x02, ch, vLSB,
+                                            (byte)(crc & 0xFF), (byte)(crc >> 8) };
+
+                    string log = BitConverter.ToString(fullFrame).Replace("-", " ");
+                    textBox3.AppendText($"Gửi ghi CH{ch} (value={value}): {log}{Environment.NewLine}");
+
+                    mySerialPort.Write(fullFrame, 0, fullFrame.Length);
+
+                    // Dừng 100ms giữa các lần gửi để mạch kịp xử lý và trả lời
+                    System.Threading.Thread.Sleep(100);
+                }
+            }
+            else
+            {
+                // ==== XỬ LÝ 6CH: GHI TẤT CẢ CÙNG LÚC ====
+                // Khung truyền ghi tất cả: 3A 06 02 07 [vLSB]
+                byte[] frame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB };
+                ushort crc = CRC16(frame);
+
+                byte[] fullFrame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB,
+                                        (byte)(crc & 0xFF), (byte)(crc >> 8) };
+
+                string log = BitConverter.ToString(fullFrame).Replace("-", " ");
+                textBox3.AppendText($"Gửi ghi tất cả 6CH (value={value}): {log}{Environment.NewLine}");
+
+                mySerialPort.Write(fullFrame, 0, fullFrame.Length);
+            }
         }
         // ========== ĐÓNG APP ==========
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
