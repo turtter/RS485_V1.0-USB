@@ -28,11 +28,10 @@ namespace RS485_V1._0_USB
             groupBox9.Enabled = false; //tắt groupbox9
             comboBox3.Enabled = false; //tắt comboBox3  
 
-            string[] ports = SerialPort.GetPortNames(); //hàm đọc cổng COM có trên máy tính 19-21
-            foreach (string port in ports)
+            string[] ports = SerialPort.GetPortNames(); //hàm đọc cổng COM có trên máy tính 
                 comboBox1.Items.Add(port);
 
-            comboBox2.Items.AddRange(new object[] { "9600", "19200", "38400", "57600", "115200" }); //thêm tốc độ baud vào comboBox2
+            comboBox2.Items.AddRange(new object[] { "9600", "19200", "38400", "57600", "115200" }); //thêm baud vào comboBox2
             comboBox2.SelectedItem = "9600";   //mặc định chọn 9600
             comboBox3.Items.AddRange(new object[] { "4CH", "6CH" });
             comboBox3.SelectedIndex = -1;
@@ -45,34 +44,32 @@ namespace RS485_V1._0_USB
 
             for (int pos = 0; pos < data.Length; pos++)
             {
-                crc ^= (ushort)data[pos]; // XOR byte dữ liệu với CRC
+                crc ^= (ushort)data[pos]; 
 
-                for (int i = 8; i != 0; i--) // Lặp 8 lần cho 8 bit của 1 byte
+                for (int i = 8; i != 0; i--) 
                 {
-                    if ((crc & 0x0001) != 0) // Nếu bit LSB là 1
+                    if ((crc & 0x0001) != 0) 
                     {
-                        crc >>= 1;           // Dịch phải 1 bit
-                        crc ^= 0xA001;       // XOR với đa thức 0xA001
+                        crc >>= 1;           
+                        crc ^= 0xA001;       
                     }
-                    else                     // Nếu bit LSB là 0
+                    else                     
                     {
-                        crc >>= 1;           // Chỉ dịch phải 1 bit
+                        crc >>= 1;          
                     }
                 }
             }
 
             return crc;
         }
-        private byte[] TaoFrameRead(byte channel) //tao frame READ, frame có cấu trúc: [0x3A, 0x03, 0x01, channel, CRC_L, CRC_H]
+        private byte[] TaoFrameRead(byte channel) //tao frame READ
         {
             byte[] frame = new byte[] { 0x3A, 0x03, 0x01, channel };
             ushort crc = CRC16(frame);
             return new byte[] { 0x3A, 0x03, 0x01, channel, (byte)(crc & 0xFF), (byte)(crc >> 8) };
         }
 
-        // Thử frame không có byte độ dài
-        // Frame: 3A 06 [channel] [vMSB] [vLSB] CRC_L CRC_H
-        // Frame ghi: 3A 06 02 [channel] [LSB] CRC_L CRC_H  (bỏ MSB 0x00)
+        // Frame ghi theo form: 3A 06 02 [channel] [LSB] CRC_L CRC_H]
         private byte[] TaoFrameWriteSingleChannel(byte channel, int value)
         {
             byte vLSB = (byte)(value & 0xFF);
@@ -84,21 +81,20 @@ namespace RS485_V1._0_USB
 
         private byte[] TaoFrameWriteAllChannels(int[] values)
         {
-            int numCH = values.Length; // 4 hoặc 6
+            int numCH = values.Length;                             // 4 hoặc 6 kênh 
 
-            // byte thứ 3 = số kênh (0x04 hoặc 0x06)
             // data = [MSB] [LSB] cho từng kênh, KHÔNG có byte channel
-            int dataSize = numCH * 2; // 4CH=8 bytes, 6CH=12 bytes
+            int dataSize = numCH * 2;                              // 4CH=8 bytes, 6CH=12 bytes
 
             byte[] frame = new byte[3 + dataSize + 2];
             frame[0] = 0x3A;
             frame[1] = 0x06;
-            frame[2] = (byte)dataSize; // ✅ 4CH=0x04, 6CH=0x06
+            frame[2] = (byte)dataSize; 
 
             for (int i = 0; i < numCH; i++)
             {
-                frame[3 + i * 2] = (byte)(values[i] >> 8);   // MSB
-                frame[3 + i * 2 + 1] = (byte)(values[i] & 0xFF); // LSB
+                frame[3 + i * 2] = (byte)(values[i] >> 8);          // MSB
+                frame[3 + i * 2 + 1] = (byte)(values[i] & 0xFF);    // LSB
             }
 
             byte[] frameForCRC = new byte[3 + dataSize];
@@ -116,7 +112,7 @@ namespace RS485_V1._0_USB
             if (!mySerialPort.IsOpen) return;
             if (comboBox3.SelectedItem == null) return;
 
-            if (comboBox3.SelectedItem.ToString() == "4CH")
+            if (comboBox3.SelectedItem.ToString() == "4CH")         // 4CH: Gửi lệnh đọc từng kênh một
             {
                 for (byte ch = 1; ch <= 4; ch++)
                 {
@@ -127,39 +123,6 @@ namespace RS485_V1._0_USB
             else // 6CH
             {
                 mySerialPort.Write(TaoFrameRead(0x07), 0, 6);
-            }
-        }
-        private void button1_Click(object sender, EventArgs e)
-        {
-            if (!mySerialPort.IsOpen)
-            {
-                mySerialPort.PortName = comboBox1.Text;
-                mySerialPort.BaudRate = int.Parse(comboBox2.Text);
-                mySerialPort.Parity = Parity.None;
-                mySerialPort.DataBits = 8;
-                mySerialPort.StopBits = StopBits.One;
-                mySerialPort.Open();
-
-                comboBox3.Enabled = true;
-                button1.Text = "DISCONNECT";
-                groupBox9.Enabled = true;
-                textBox3.AppendText($"✅ Đã kết nối {mySerialPort.PortName} - {mySerialPort.BaudRate} baud{Environment.NewLine}");
-            }
-            else
-            {
-                mySerialPort.Close();
-                button1.Text = "CONNECT";
-                groupBox9.Enabled = false;
-                comboBox3.Enabled = false;
-                groupBox2.Enabled = false;
-                groupBox3.Enabled = false;
-                groupBox4.Enabled = false;
-                groupBox5.Enabled = false;
-                groupBox6.Enabled = false;
-                groupBox7.Enabled = false;
-                groupBox8.Enabled = false;
-
-                textBox3.AppendText($"X Đã ngắt kết nối{Environment.NewLine}");
             }
         }
 
@@ -182,7 +145,7 @@ namespace RS485_V1._0_USB
             this.Invoke(new Action(() =>
             {
                 textBox3.AppendText($"Nhận: {hex}{Environment.NewLine}");
-                // Tách từng frame và xử lý riêng
+
                 ParseMultipleFrames(buffer);
             }));
         }
@@ -198,19 +161,15 @@ namespace RS485_V1._0_USB
                     i++;
                     continue;
                 }
-
-                // Cần ít nhất 4 bytes: 3A, funcCode, dataLen, ...
                 if (i + 3 >= data.Length) break;
 
                 byte funcCode = data[i + 1];
                 byte dataLen = data[i + 2];
 
-                // Tổng frame = header(3) + dataLen + CRC(2)
                 int frameLen = 3 + dataLen + 2;
 
                 if (i + frameLen > data.Length) break;
 
-                // Cắt đúng 1 frame
                 byte[] frame = new byte[frameLen];
                 Array.Copy(data, i, frame, 0, frameLen);
 
@@ -244,7 +203,7 @@ namespace RS485_V1._0_USB
                 case 0x03: // Response đọc value
                     byte channel = data[2];
                     int value = (data[3] << 8) | data[4];
-                   // textBox3.AppendText($"✅ Đọc CH{channel} = {value}{Environment.NewLine}");
+                    // textBox3.AppendText($"✅ Đọc CH{channel} = {value}{Environment.NewLine}");
                     break;
 
                 case 0x06: // Response ghi từng kênh
@@ -263,82 +222,6 @@ namespace RS485_V1._0_USB
                     textBox3.AppendText($"ℹ️ FuncCode 0x{funcCode:X2} - Data: {BitConverter.ToString(data).Replace("-", " ")}{Environment.NewLine}");
                     break;
             }
-        }
-        
-
-        private void label1_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void groupBox1_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label2_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void groupBox2_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void comboBox2_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label4_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void groupBox3_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label5_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void numericUpDown1_ValueChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label6_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void comboBox3_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label31_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void numericUpDown8_ValueChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label33_Click(object sender, EventArgs e)
-        {
-
         }
 
         private void comboBox3_SelectedIndexChanged_1(object sender, EventArgs e)
@@ -362,6 +245,39 @@ namespace RS485_V1._0_USB
                 groupBox7.Enabled = true;
                 groupBox8.Enabled = true;
 
+            }
+        }
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if (!mySerialPort.IsOpen)
+            {
+                mySerialPort.PortName = comboBox1.Text;
+                mySerialPort.BaudRate = int.Parse(comboBox2.Text);
+                mySerialPort.Parity = Parity.None;
+                mySerialPort.DataBits = 8;
+                mySerialPort.StopBits = StopBits.One;
+                mySerialPort.Open();
+
+                comboBox3.Enabled = true;
+                button1.Text = "DISCONNECT";
+                groupBox9.Enabled = true;
+                textBox3.AppendText($"✅ Đã kết nối {mySerialPort.PortName} - {mySerialPort.BaudRate} baud{Environment.NewLine}");
+            }
+            else
+            {
+                mySerialPort.Close();
+                button1.Text = "CONNECT";
+                groupBox9.Enabled = false;
+                comboBox3.Enabled = false;
+                groupBox2.Enabled = false;
+                groupBox3.Enabled = false;
+                groupBox4.Enabled = false;
+                groupBox5.Enabled = false;
+                groupBox6.Enabled = false;
+                groupBox7.Enabled = false;
+                groupBox8.Enabled = false;
+
+                textBox3.AppendText($"X Đã ngắt kết nối{Environment.NewLine}");
             }
         }
 
@@ -409,7 +325,6 @@ namespace RS485_V1._0_USB
                 // ==== XỬ LÝ 4CH: GHI TỪNG KÊNH MỘT ====
                 for (byte ch = 1; ch <= 4; ch++)
                 {
-                    // Khung truyền ghi 1 kênh: 3A 06 02 [ch] [vLSB]
                     byte[] frame = new byte[] { 0x3A, 0x06, 0x02, ch, vLSB };
                     ushort crc = CRC16(frame);
 
@@ -421,14 +336,12 @@ namespace RS485_V1._0_USB
 
                     mySerialPort.Write(fullFrame, 0, fullFrame.Length);
 
-                    // Dừng 100ms giữa các lần gửi để mạch kịp xử lý và trả lời
                     System.Threading.Thread.Sleep(100);
                 }
             }
             else
             {
                 // ==== XỬ LÝ 6CH: GHI TẤT CẢ CÙNG LÚC ====
-                // Khung truyền ghi tất cả: 3A 06 02 07 [vLSB]
                 byte[] frame = new byte[] { 0x3A, 0x06, 0x02, 0x07, vLSB };
                 ushort crc = CRC16(frame);
 
@@ -447,6 +360,68 @@ namespace RS485_V1._0_USB
             readTimer.Stop();
             if (mySerialPort != null && mySerialPort.IsOpen)
                 mySerialPort.Close();
+        }
+
+
+        private void label1_Click(object sender, EventArgs e)
+        {
+
+        }
+        private void groupBox1_Enter(object sender, EventArgs e)
+        {
+
+        }
+        private void label2_Click(object sender, EventArgs e)
+        {
+
+        }
+        private void groupBox2_Enter(object sender, EventArgs e)
+        {
+
+        }
+        private void comboBox2_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void label4_Click(object sender, EventArgs e)
+        {
+
+        }
+        private void groupBox3_Enter(object sender, EventArgs e)
+        {
+
+        }
+        private void label5_Click(object sender, EventArgs e)
+        {
+
+        }
+        private void numericUpDown1_ValueChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void label6_Click(object sender, EventArgs e)
+        {
+
+        }
+        private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void comboBox3_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void label31_Click(object sender, EventArgs e)
+        {
+
+        }
+        private void numericUpDown8_ValueChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void label33_Click(object sender, EventArgs e)
+        {
+
         }
 
         private void numericUpDown9_ValueChanged(object sender, EventArgs e)
