@@ -247,6 +247,27 @@ namespace RS485_V1._0_USB
 
             }
         }
+
+        private void DocKenh(byte ch)
+        {
+            if (!mySerialPort.IsOpen) return;
+            mySerialPort.DiscardInBuffer();
+            mySerialPort.Write(TaoFrameRead(ch), 0, 6);
+            int elapsed = 0;
+            while (mySerialPort.BytesToRead < 8 && elapsed < 1000) { System.Threading.Thread.Sleep(10); elapsed += 10; }
+            if (mySerialPort.BytesToRead == 0) { textBox3.AppendText($"CH{ch}: No response\n"); return; }
+            byte[] resp = new byte[mySerialPort.BytesToRead];
+            mySerialPort.Read(resp, 0, resp.Length);
+            textBox3.AppendText($"CH{ch}: {BitConverter.ToString(resp).Replace("-", " ")}\n");
+        }
+
+        private void GhiKenh(byte ch, int value)
+        {
+            if (!mySerialPort.IsOpen) return;
+            byte[] frame = TaoFrameWriteSingleChannel(ch, value);
+            mySerialPort.Write(frame, 0, frame.Length); // dùng frame.Length thay vì 8
+        }
+
         private void button1_Click(object sender, EventArgs e)
         {
             if (comboBox1.SelectedItem == null)
@@ -293,7 +314,7 @@ namespace RS485_V1._0_USB
             if (!mySerialPort.IsOpen) return;
             if (comboBox3.SelectedItem == null)
             {
-                MessageBox.Show("Vui lòng chọn 4CH hoặc 6CH!", "Thông báo",
+                MessageBox.Show("Vui lòng chọn kênh 4CH hoặc 6CH!", "Thông báo",
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -319,14 +340,12 @@ namespace RS485_V1._0_USB
             }
          }
 
-       
-
         private void button3_Click(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen) return;
             if (comboBox3.SelectedItem == null)
             {
-                MessageBox.Show("Vui lòng chọn 4CH hoặc 6CH!", "Thông báo",
+                MessageBox.Show("Vui lòng chọn kênh 4CH hoặc 6CH!", "Thông báo",
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -367,8 +386,8 @@ namespace RS485_V1._0_USB
 
                 mySerialPort.Write(fullFrame, 0, fullFrame.Length);
             }
-        }
-
+            }
+        
         // ========== ĐÓNG APP ==========
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
@@ -388,7 +407,7 @@ namespace RS485_V1._0_USB
         }
         private void label2_Click(object sender, EventArgs e)
         {
-
+           
         }
         private void groupBox2_Enter(object sender, EventArgs e)
         {
@@ -408,7 +427,7 @@ namespace RS485_V1._0_USB
         }
         private void label5_Click(object sender, EventArgs e)
         {
-
+            DocKenh(1);
         }
         private void numericUpDown1_ValueChanged(object sender, EventArgs e)
         {
@@ -416,7 +435,7 @@ namespace RS485_V1._0_USB
         }
         private void label6_Click(object sender, EventArgs e)
         {
-
+            GhiKenh(1, (int)numericUpDown1.Value);
         }
         private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
@@ -447,6 +466,66 @@ namespace RS485_V1._0_USB
         private void groupBox9_Enter(object sender, EventArgs e)
         {
 
+        }
+
+        private void label29_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label15_Click(object sender, EventArgs e)
+        {
+            GhiKenh(3, (int)numericUpDown3.Value);
+        }
+
+        private void label16_Click(object sender, EventArgs e)
+        {
+            DocKenh(3);
+        }
+
+        private void label20_Click(object sender, EventArgs e)
+        {
+            DocKenh(4);
+        }
+
+        private void label24_Click(object sender, EventArgs e)
+        {
+            DocKenh(5);
+        }
+
+        private void label28_Click(object sender, EventArgs e)
+        {
+            DocKenh(6);
+        }
+
+        private void label11_Click(object sender, EventArgs e)
+        {
+            GhiKenh(2, (int)numericUpDown2.Value);
+        }
+
+        private void label19_Click(object sender, EventArgs e)
+        {
+            GhiKenh(4, (int)numericUpDown4.Value);
+        }
+
+        private void groupBox7_Enter(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void label23_Click(object sender, EventArgs e)
+        {
+            GhiKenh(5, (int)numericUpDown2.Value);
+        }
+
+        private void label27_Click(object sender, EventArgs e)
+        {
+            GhiKenh(6, (int)numericUpDown2.Value);
+        }
+
+        private void label12_Click(object sender, EventArgs e)
+        {
+            DocKenh(2);
         }
     }
 }
