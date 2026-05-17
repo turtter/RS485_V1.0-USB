@@ -27,8 +27,9 @@ namespace RS485_V1._0_USB
             groupBox9.Enabled = false; //tắt groupbox9
             comboBox3.Enabled = false; //tắt comboBox3  
 
-            string[] ports = SerialPort.GetPortNames(); //hàm đọc cổng COM có trên máy tính 
-            comboBox1.Items.Add(port);
+            string[] ports = SerialPort.GetPortNames();
+            foreach (string port in ports)
+                comboBox1.Items.Add(port);
 
             comboBox2.Items.AddRange(new object[] { "9600", "19200", "38400", "57600", "115200" }); //thêm baud vào comboBox2
             comboBox2.SelectedItem = "9600";   //mặc định chọn 9600
@@ -191,7 +192,7 @@ namespace RS485_V1._0_USB
 
             if (calcCRC != recvCRC)
             {
-                textBox3.AppendText($"⚠️ CRC lỗi! Tính: {calcCRC:X4} - Nhận: {recvCRC:X4}{Environment.NewLine}");
+                textBox3.AppendText($" CRC lỗi! Tính: {calcCRC:X4} - Nhận: {recvCRC:X4}{Environment.NewLine}");
                 return;
             }
 
@@ -248,8 +249,15 @@ namespace RS485_V1._0_USB
         }
         private void button1_Click(object sender, EventArgs e)
         {
-            if (!mySerialPort.IsOpen)
+            if (comboBox1.SelectedItem == null)
             {
+                MessageBox.Show("Vui lòng chọn cổng COM", "Thông báo",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+                if (!mySerialPort.IsOpen)
+            {
+
                 mySerialPort.PortName = comboBox1.Text;
                 mySerialPort.BaudRate = int.Parse(comboBox2.Text);
                 mySerialPort.Parity = Parity.None;
@@ -283,64 +291,35 @@ namespace RS485_V1._0_USB
         private void button2_Click(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen) return;
-            if (comboBox3.SelectedItem == null) return;
+            if (comboBox3.SelectedItem == null)
+            {
+                MessageBox.Show("Vui lòng chọn 4CH hoặc 6CH!", "Thông báo",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             if (comboBox3.SelectedItem.ToString() == "4CH")
             {
+                // Đọc từng kênh 1→4
                 for (byte ch = 1; ch <= 4; ch++)
                 {
                     byte[] frame = TaoFrameRead(ch);
                     string log = BitConverter.ToString(frame).Replace("-", " ");
                     textBox3.AppendText($"Gửi đọc CH{ch}: {log}{Environment.NewLine}");
                     mySerialPort.Write(frame, 0, frame.Length);
-
-                    // Timeout chờ phản hồi
-                    int timeout = 1000;
-                    int elapsed = 0;
-                    while (mySerialPort.BytesToRead == 0 && elapsed < timeout)
-                    {
-                        System.Threading.Thread.Sleep(10);
-                        elapsed += 10;
-                    }
-
-                    if (mySerialPort.BytesToRead == 0)
-                    {
-                        textBox3.AppendText($"CH{ch}: Không có phản hồi!{Environment.NewLine}");
-                        continue; // bỏ qua kênh này, không treo
-                    }
-
-                    System.Threading.Thread.Sleep(50);
-                    string data = mySerialPort.ReadExisting();
-                    textBox3.AppendText($"CH{ch}: {data}{Environment.NewLine}");
+                    System.Threading.Thread.Sleep(100);
                 }
             }
-            else // 6CH
+            else // 6CH - Read All
             {
                 byte[] frame = TaoFrameRead(0x07);
                 string log = BitConverter.ToString(frame).Replace("-", " ");
                 textBox3.AppendText($"Gửi đọc tất cả 6CH: {log}{Environment.NewLine}");
                 mySerialPort.Write(frame, 0, frame.Length);
-
-                // Timeout chờ phản hồi
-                int timeout = 1000;
-                int elapsed = 0;
-                while (mySerialPort.BytesToRead == 0 && elapsed < timeout)
-                {
-                    System.Threading.Thread.Sleep(10);
-                    elapsed += 10;
-                }
-
-                if (mySerialPort.BytesToRead == 0)
-                {
-                    textBox3.AppendText("Không có phản hồi!" + Environment.NewLine);
-                    return;
-                }
-
-                System.Threading.Thread.Sleep(50);
-                string data = mySerialPort.ReadExisting();
-                textBox3.AppendText("6CH: " + data + Environment.NewLine);
             }
-        }
+         }
+
+       
 
         private void button3_Click(object sender, EventArgs e)
         {
@@ -389,6 +368,7 @@ namespace RS485_V1._0_USB
                 mySerialPort.Write(fullFrame, 0, fullFrame.Length);
             }
         }
+
         // ========== ĐÓNG APP ==========
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {

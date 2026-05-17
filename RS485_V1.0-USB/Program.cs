@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Windows.Forms;
+using RS485_V1._0_USB;
 
 namespace RS485_V1._0_USB
 {
