@@ -1,6 +1,7 @@
 ﻿using System;
-using System.Windows.Forms;
 using System.IO.Ports;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace RS485_V1._0_USB
 {
@@ -309,36 +310,51 @@ namespace RS485_V1._0_USB
             }
         }
 
-        private void button2_Click(object sender, EventArgs e)
+        private async void button2_Click(object sender, EventArgs e)
         {
             if (!mySerialPort.IsOpen) return;
-            if (comboBox3.SelectedItem == null)
-            {
-                MessageBox.Show("Vui lòng chọn kênh 4CH hoặc 6CH!", "Thông báo",
-                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            if (comboBox3.SelectedItem == null) { MessageBox.Show("Vui lòng chọn kênh 4CH hoặc 6CH!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
+            string result = "";
 
             if (comboBox3.SelectedItem.ToString() == "4CH")
             {
-                // Đọc từng kênh 1→4
-                for (byte ch = 1; ch <= 4; ch++)
+                await Task.Run(() =>
                 {
-                    byte[] frame = TaoFrameRead(ch);
-                    string log = BitConverter.ToString(frame).Replace("-", " ");
-                    textBox3.AppendText($"Gửi đọc CH{ch}: {log}{Environment.NewLine}");
-                    mySerialPort.Write(frame, 0, frame.Length);
-                    System.Threading.Thread.Sleep(100);
-                }
+                    for (byte ch = 1; ch <= 4; ch++)
+                    {
+                        try
+                        {
+                            mySerialPort.DiscardInBuffer();
+                            mySerialPort.Write(TaoFrameRead(ch), 0, 6);
+
+                            int elapsed = 0;
+                            while (mySerialPort.BytesToRead < 8 && elapsed < 500)
+                            {
+                                System.Threading.Thread.Sleep(10);
+                                elapsed += 10;
+                            }
+
+                            if (mySerialPort.BytesToRead == 0) { result += $"CH{ch} | "; continue; }
+
+                            byte[] resp = new byte[mySerialPort.BytesToRead];
+                            mySerialPort.Read(resp, 0, resp.Length);
+                            result += BitConverter.ToString(resp).Replace("-", " ") + " | ";
+                        }
+                        catch { result += $"CH{ch}:Error | "; }
+                    }
+                });
+
+                textBox3.AppendText(result.TrimEnd('|', ' ') + Environment.NewLine);
             }
-            else // 6CH - Read All
+            else // 6CH
             {
                 byte[] frame = TaoFrameRead(0x07);
                 string log = BitConverter.ToString(frame).Replace("-", " ");
                 textBox3.AppendText($"Gửi đọc tất cả 6CH: {log}{Environment.NewLine}");
                 mySerialPort.Write(frame, 0, frame.Length);
             }
-         }
+        }
 
         private void button3_Click(object sender, EventArgs e)
         {
@@ -394,9 +410,7 @@ namespace RS485_V1._0_USB
             readTimer.Stop();
             if (mySerialPort != null && mySerialPort.IsOpen)
                 mySerialPort.Close();
-        }
-
-
+        } 
         private void label1_Click(object sender, EventArgs e)
         {
 
@@ -526,6 +540,16 @@ namespace RS485_V1._0_USB
         private void label12_Click(object sender, EventArgs e)
         {
             DocKenh(2);
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            comboBox1.Items.Clear();
+            string[] ports = SerialPort.GetPortNames();
+            foreach (string port in ports)
+                comboBox1.Items.Add(port);
+            if (comboBox1.Items.Count > 0)
+                comboBox1.SelectedIndex = 0;
         }
     }
 }
